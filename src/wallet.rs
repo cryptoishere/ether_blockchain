@@ -13,31 +13,42 @@ impl Wallet {
     /// - Zeroizing<String>: the mnemonic phrase (auto-zeroized when dropped)
     /// - PrivateKeySigner: alloy signer built from the phrase & password
     pub fn generate_wallet(
+        size: usize,
+        index: u32,
         password: Option<&str>,
     ) -> Result<(Zeroizing<String>, PrivateKeySigner), LocalSignerError> 
     {
-        // ---- HIGH-SECURITY RNG ----
+        let phrase = Self::generate_mnemonic(size)?;
+
+        let signer = Self::build_signer(&phrase, password, index)?;
+
+        Ok((phrase, signer))
+    }
+
+    fn generate_mnemonic(size: usize) -> Result<Zeroizing<String>, LocalSignerError> 
+    {
         // Direct OS entropy (no userland state, no PRNG, no counter limits)
         let mut rng = OsRng;
 
-        // ---- GENERATE MNEMONIC ----
         // 24-word = 256-bit entropy (strongest BIP-39 option)
-        let mnemonic = Mnemonic::<English>::new_with_count(&mut rng, 24)?;
+        let mnemonic = Mnemonic::<English>::new_with_count(&mut rng, size)?;
 
-        // Convert phrase to String, but immediately wrap in Zeroizing<>
-        let phrase: Zeroizing<String> = Zeroizing::new(mnemonic.to_phrase());
+        let phrase = Zeroizing::new(mnemonic.to_phrase());
 
-        // ---- BUILD SIGNER (NO EXTRA COPIES) ----
-        // MnemonicBuilder only borrows the phrase, does *not* clone
-        let mut signer_builder = MnemonicBuilder::<English>::default()
-            .phrase(&*phrase);
+        Ok(phrase)
+    }
+
+    pub fn build_signer(phrase: &Zeroizing<String>, password: Option<&str>, derivation_index: u32) -> Result<PrivateKeySigner, LocalSignerError>  {
+        let mut builder = MnemonicBuilder::<English>::default()
+            .phrase(phrase.as_str())
+            .index(derivation_index)?;
 
         if let Some(pwd) = password {
-            signer_builder = signer_builder.password(pwd)   // password is not cloned internally
-        } 
+            builder = builder.password(pwd);
+        }
 
-        let signer = signer_builder.build()?;
+        let signer = builder.build()?;
 
-        Ok((phrase, signer))
+        Ok(signer)
     }
 }
