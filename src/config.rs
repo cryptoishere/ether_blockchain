@@ -13,6 +13,14 @@ pub struct Config {
     pub recipient: Address,
 }
 
+pub struct ConfigOptions {
+    pub rpc_url: String,
+    pub phrase: String,
+    pub password: Option<String>,
+    pub usdt_contract: Address,
+    pub recipient: Address,
+}
+
 impl Config {
     pub fn from_env() -> Result<Self> {
         // dotenvy::dotenv().ok();
@@ -24,5 +32,17 @@ impl Config {
             usdt_contract: Address::from_str(&env::var("USDT_CONTRACT_BSC").context("USDT_CONTRACT_BSC not set")?)?,
             recipient: Address::from_str(&env::var("XBTS_BSC_WALLET").context("XBTS_BSC_WALLET not set")?)?,
         })
+    }
+}
+
+impl From<ConfigOptions> for Config {
+    fn from(c: ConfigOptions) -> Self {
+        Self {
+            rpc_url: c.rpc_url,
+            phrase: Zeroizing::new(c.phrase),
+            password: c.password,
+            usdt_contract: c.usdt_contract,
+            recipient: c.recipient,
+        }
     }
 }
