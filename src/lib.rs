@@ -4,4 +4,3 @@ pub mod token;
 pub mod monitor;
 pub mod utils;
 pub mod wallet;
-pub mod address;
