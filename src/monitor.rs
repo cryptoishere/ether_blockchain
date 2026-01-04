@@ -7,7 +7,7 @@ use futures::StreamExt;
 use anyhow::Result;
 
 use crate::client::AppProvider;
-use crate::utils::to_human_readable;
+use crate::utils::to_human;
 
 // Re-declare event for decoding
 sol! {
@@ -38,7 +38,7 @@ pub async fn monitor(
         for log in logs {
             match Transfer::decode_log(&log.into()) {
                 Ok(event) => {
-                    let readable = to_human_readable(event.value, decimals);
+                    let readable = to_human(event.value, decimals);
                     log::debug!(
                         "🚨 INCOMING TRANSACTION! From: {:?} | Amount: {} USDT",
                         event.from, readable

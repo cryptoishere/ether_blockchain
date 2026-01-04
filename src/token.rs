@@ -22,7 +22,6 @@ sol! {
 
 pub struct TokenManager {
     contract: IERC20::IERC20Instance<Arc<AppProvider>>,
-    provider: Arc<AppProvider>,
     decimals: u8,
     symbol: String,
 }
@@ -38,7 +37,7 @@ impl TokenManager {
             Err(_) => 18, // Default to 18 if call fails
         };
 
-        Ok(Self { contract, provider, decimals, symbol: symbol.to_string() })
+        Ok(Self { contract, decimals, symbol: symbol.to_string() })
     }
 
     pub fn get_decimals(&self) -> u8 {
@@ -47,12 +46,12 @@ impl TokenManager {
 
     pub async fn get_balance_human(&self, address: Address) -> Result<String> {
         let bal = self.contract.balanceOf(address).call().await?;
-        Ok(format!("{} {}", utils::to_human_readable(bal, self.decimals), self.symbol))
+        Ok(format!("{} {}", utils::to_human(bal, self.decimals), self.symbol))
     }
 
     /// Prepares, Estimates, and returns Human Readable Fee information
-    pub async fn prepare_transfer(&self, to: Address, amount_human: f64) -> Result<(U256, String)> {
-        let amount_wei = utils::from_human_readable(amount_human, self.decimals)?;
+    pub async fn prepare_transfer(&self, to: Address, amount_human: &str) -> Result<(U256, String)> {
+        let amount_wei = utils::from_human(amount_human, self.decimals)?;
 
         // Create the call builder
         let call = self.contract.transfer(to, amount_wei);
@@ -61,11 +60,11 @@ impl TokenManager {
         let gas_estimate = call.estimate_gas().await.context("Gas estimation failed")?;
 
         // 2. Get Gas Price
-        let gas_price = self.provider.get_gas_price().await.context("Failed to get gas price")?;
+        let gas_price = self.contract.provider().get_gas_price().await.context("Failed to get gas price")?;
 
         // 3. Calculate Fee
         let fee_wei = gas_estimate as u128 * gas_price;
-        let fee_human = utils::to_human_readable(U256::from(fee_wei), 18); // Native token always 18 usually (BNB/ETH)
+        let fee_human = utils::to_human(U256::from(fee_wei), 18); // Native token always 18 usually (BNB/ETH)
 
         Ok((amount_wei, format!("{} BNB/ETH", fee_human)))
     }
