@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use alloy::sol;
 use alloy::primitives::{Address, U256};
 use alloy::providers::Provider;
@@ -19,16 +20,16 @@ sol! {
     }
 }
 
-pub struct TokenManager<'a> {
-    contract: IERC20::IERC20Instance<&'a AppProvider>,
-    provider: &'a AppProvider,
+pub struct TokenManager {
+    contract: IERC20::IERC20Instance<Arc<AppProvider>>,
+    provider: Arc<AppProvider>,
     decimals: u8,
     symbol: String,
 }
 
-impl<'a> TokenManager<'a> {
-    pub async fn new(provider: &'a AppProvider, address: Address, symbol: &str) -> Result<Self> {
-        let contract = IERC20::new(address, provider);
+impl TokenManager {
+    pub async fn new(provider: Arc<AppProvider>, address: Address, symbol: &str) -> Result<Self> {
+        let contract = IERC20::new(address, provider.clone());
 
         // Cache decimals for parsing
         let decimals_call = contract.decimals().call().await;
