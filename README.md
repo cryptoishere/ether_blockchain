@@ -81,12 +81,15 @@ ether_alloy = { git = "https://github.com/cryptoishere/ether_blockchain.git" }
 
 ## Example
 ```rust
+use std::sync::Arc;
+
+use alloy::primitives::U256;
 use ether_blockchain::client::EvmClient;
 use ether_blockchain::config::Config;
 use ether_blockchain::token::TokenManager;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     // 1. Load Config
     let config = Config::from_env().unwrap();
     
@@ -95,7 +98,7 @@ async fn main() -> Result<()> {
 
     // 3. Initialize Token Manager (USDT)
     let usdt_manager = TokenManager::new(
-        &client.provider, 
+        Arc::new(client.provider), 
         config.usdt_contract, 
         "USDT"
     ).await.unwrap();
@@ -105,23 +108,25 @@ async fn main() -> Result<()> {
     println!("USDT Balance: {}", balance);
 
     // 5. Estimate & Send Transfer
-    let amount_to_send = 2.5;
+    let amount_to_send = U256::from(2_500_000_000_000_000_000u64);
 
     // Estimate transfer cost
-    let (wei_amount, fee_readable) = usdt_manager.prepare_transfer(
+    let estimations = usdt_manager.prepare_transfer(
         config.recipient, 
         amount_to_send
     ).await.unwrap();
 
-    println!("Estimated Fee: {}", fee_readable);
+    println!("Estimated Fee: {:?}", estimations.calculate_fee(None));
 
     // Uncomment to broadcast:
     /*
     let result = usdt_manager
-        .broadcast_transfer(config.recipient, wei_amount)
+        .broadcast_transfer(config.recipient, amount_to_send)
         .await.unwrap();
 
-    println!("Broadcast Result: {:?}", result);
+    println!("Hash: {}", result.hash);
+    println!("Status: {}", result.status);
+    println!("Cost: {}", result.cost);
     */
 
     Ok(())
