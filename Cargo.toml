@@ -8,11 +8,11 @@ name = "ether_blockchain"
 path = "src/lib.rs"
 
 [dependencies]
-alloy = { version = "1.2.1", features = ["rpc-client", "contract", "sol-types", "provider-anvil-node", "signer-mnemonic"] }
+alloy = { version = "1.4.1", features = ["rpc-client", "contract", "sol-types", "provider-anvil-node", "signer-mnemonic"] }
 futures = "0.3.31"
 anyhow = "1.0.100"
 log = "0.4.29"
-url = "2.5.7"
+url = "2.5.8"
 
 # dotenvy = "0.15.7"
 # hex = "0.4.3"
