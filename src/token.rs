@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use alloy::network::ReceiptResponse;
 use alloy::sol;
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{Address, TxHash, U256};
 use alloy::providers::Provider;
-use anyhow::{Result, Context};
+use anyhow::Result;
 
 use crate::client::AppProvider;
 use crate::utils;
@@ -26,15 +27,40 @@ pub struct TokenManager {
     symbol: String,
 }
 
+pub struct PreparedTransfer {
+    gas_estimate: u64,
+    gas_price: u128,
+}
+
+impl PreparedTransfer {
+    pub fn calculate_fee(&self, decimals: Option<u8>) -> Result<(u128, String)> {
+        let fee_wei = self.gas_estimate as u128 * self.gas_price;
+        let fee_human = utils::to_human(U256::from(fee_wei), decimals.unwrap_or(18))?; // Native token always 18 usually (BNB/ETH)
+
+        Ok((fee_wei, fee_human))
+    }
+}
+
+pub struct BroadcastedTransaction {
+    pub hash: TxHash,
+    pub status: bool,
+    pub cost: u128,
+}
+
 impl TokenManager {
     pub async fn new(provider: Arc<AppProvider>, address: Address, symbol: &str) -> Result<Self> {
         let contract = IERC20::new(address, provider.clone());
 
         // Cache decimals for parsing
-        let decimals_call = contract.decimals().call().await;
-        let decimals = match decimals_call {
-            Ok(d) => d,
-            Err(_) => 18, // Default to 18 if call fails
+        let decimals = match contract.decimals().call().await {
+            Ok(d) => {
+                log::debug!("decimals_call: {d}");
+                d
+            },
+            Err(e) => {
+                log::error!("decimals_call error: {e}");
+                18 // Default to 18 if call fails
+            }
         };
 
         Ok(Self { contract, decimals, symbol: symbol.to_string() })
@@ -52,36 +78,38 @@ impl TokenManager {
 
     pub async fn get_balance_human(&self, address: Address) -> Result<String> {
         let bal = self.contract.balanceOf(address).call().await?;
-        Ok(format!("{} {}", utils::to_human(bal, self.decimals), self.symbol))
+        Ok(format!("{} {}", utils::to_human(bal, self.decimals)?, self.symbol))
     }
 
-    /// Prepares, Estimates, and returns Human Readable Fee information
-    pub async fn prepare_transfer(&self, to: Address, amount_human: &str) -> Result<(U256, String)> {
-        let amount_wei = utils::from_human(amount_human, self.decimals)?;
-
+    /// Cost estimates
+    pub async fn prepare_transfer(&self, to: Address, amount_wei: U256) -> Result<PreparedTransfer> {
         // Create the call builder
         let call = self.contract.transfer(to, amount_wei);
 
         // 1. Estimate Gas Units
-        let gas_estimate = call.estimate_gas().await.context("Gas estimation failed")?;
+        let gas_estimate = call.estimate_gas().await?;
 
         // 2. Get Gas Price
-        let gas_price = self.contract.provider().get_gas_price().await.context("Failed to get gas price")?;
+        let gas_price = self.contract.provider().get_gas_price().await?;
 
-        // 3. Calculate Fee
-        let fee_wei = gas_estimate as u128 * gas_price;
-        let fee_human = utils::to_human(U256::from(fee_wei), 18); // Native token always 18 usually (BNB/ETH)
-
-        Ok((amount_wei, format!("{} BNB/ETH", fee_human)))
+        Ok(PreparedTransfer {
+            gas_estimate,
+            gas_price,
+        })
     }
 
-    pub async fn broadcast_transfer(&self, to: Address, amount_wei: U256) -> Result<String> {
+    pub async fn broadcast_transfer(&self, to: Address, amount_wei: U256) -> Result<BroadcastedTransaction> {
         let tx = self.contract.transfer(to, amount_wei).send().await?;
         let hash = tx.tx_hash().clone();
 
-        // Wait for receipt
         let receipt = tx.get_receipt().await?;
 
-        Ok(format!("Tx: {:?} | Status: {:?}", hash, receipt.status()))
+        let transaction = BroadcastedTransaction {
+            hash,
+            status: receipt.status(),
+            cost: receipt.cost(),
+        };
+
+        Ok(transaction)
     }
 }

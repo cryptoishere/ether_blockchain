@@ -38,7 +38,7 @@ pub async fn monitor(
         for log in logs {
             match Transfer::decode_log(&log.into()) {
                 Ok(event) => {
-                    let readable = to_human(event.value, decimals);
+                    let readable = to_human(event.value, decimals).unwrap();
                     log::debug!(
                         "🚨 INCOMING TRANSACTION! From: {:?} | Amount: {} USDT",
                         event.from, readable

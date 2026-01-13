@@ -1,4 +1,5 @@
 use alloy::primitives::U256;
+use alloy::primitives::utils::UnitsError;
 use alloy::primitives::utils::{format_units, parse_units};
 use anyhow::Result;
 
@@ -8,6 +9,6 @@ pub fn from_human(amount: &str, decimals: u8) -> Result<U256> {
 }
 
 /// Convert U256 → human string using token decimals
-pub fn to_human(amount: U256, decimals: u8) -> String {
-    format_units(amount, decimals).unwrap_or_else(|_| "0".to_string())
+pub fn to_human(amount: U256, decimals: u8) -> Result<String, UnitsError> {
+    format_units(amount, decimals)
 }
