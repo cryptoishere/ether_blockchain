@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use alloy::primitives::Address;
 use alloy::providers::fillers::FillProvider;
 use alloy::providers::fillers::{JoinFill, GasFiller, BlobGasFiller, NonceFiller, ChainIdFiller, WalletFiller};
@@ -15,7 +17,7 @@ use crate::wallet::Wallet;
 pub type AppProvider = FillProvider<JoinFill<JoinFill<Identity, JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>>, WalletFiller<EthereumWallet>>, RootProvider>;
 
 pub struct EvmClient {
-    pub provider: AppProvider,
+    pub provider: Arc<AppProvider>,
     pub address: Address,
 }
 
@@ -30,6 +32,6 @@ impl EvmClient {
             .wallet(EthereumWallet::from(wallet))
             .connect_http(Url::parse(&config.rpc_url)?);
 
-        Ok(Self { provider, address })
+        Ok(Self { provider: Arc::new(provider), address })
     }
 }

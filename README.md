@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 3. Initialize Token Manager (USDT)
     let usdt_manager = TokenManager::new(
-        Arc::new(client.provider), 
+        client.provider.clone(), 
         config.usdt_contract, 
         "USDT"
     ).await.unwrap();
