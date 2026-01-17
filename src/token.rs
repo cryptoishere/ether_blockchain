@@ -35,9 +35,17 @@ pub struct PreparedTransfer {
 impl PreparedTransfer {
     pub fn calculate_fee(&self, decimals: Option<u8>) -> Result<(u128, String)> {
         let fee_wei = self.gas_estimate as u128 * self.gas_price;
-        let fee_human = utils::to_human(U256::from(fee_wei), decimals.unwrap_or(18))?; // Native token always 18 usually (BNB/ETH)
+        let fee_human = utils::to_human(U256::from(fee_wei), decimals.unwrap_or(18))?;
 
         Ok((fee_wei, fee_human))
+    }
+
+    pub fn get_gas_units(&self) -> u128 {
+        self.gas_estimate as u128
+    }
+
+    pub fn get_gas_price(&self) -> u128 {
+        self.gas_price
     }
 }
 
@@ -48,8 +56,8 @@ pub struct BroadcastedTransaction {
 }
 
 impl TokenManager {
-    pub async fn new(provider: Arc<AppProvider>, address: Address, symbol: &str) -> Result<Self> {
-        let contract = IERC20::new(address, provider.clone());
+    pub async fn new(provider: Arc<AppProvider>, contract_address: Address, symbol: &str) -> Result<Self> {
+        let contract = IERC20::new(contract_address, provider.clone());
 
         // Cache decimals for parsing
         let decimals = match contract.decimals().call().await {
