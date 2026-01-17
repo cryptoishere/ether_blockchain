@@ -84,6 +84,12 @@ impl TokenManager {
         Ok(bal)
     }
 
+    pub async fn get_chain_balance_raw(&self, address: Address) -> Result<U256> {
+        let bal = self.contract.provider().get_balance(address).await?;
+
+        Ok(bal)
+    }
+
     pub async fn get_balance_human(&self, address: Address) -> Result<String> {
         let bal = self.contract.balanceOf(address).call().await?;
         Ok(format!("{} {}", utils::to_human(bal, self.decimals)?, self.symbol))
