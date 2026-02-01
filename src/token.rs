@@ -1,9 +1,11 @@
 use std::sync::Arc;
 use alloy::network::ReceiptResponse;
+use alloy::rpc::types::TransactionReceipt;
 use alloy::sol;
 use alloy::primitives::{Address, TxHash, U256};
 use alloy::providers::Provider;
 use anyhow::Result;
+use tokio::time::{Duration, sleep, timeout};
 
 use crate::client::AppProvider;
 use crate::utils;
@@ -51,8 +53,6 @@ impl PreparedTransfer {
 
 pub struct BroadcastedTransaction {
     pub hash: TxHash,
-    pub status: bool,
-    pub cost: u128,
 }
 
 impl TokenManager {
@@ -112,18 +112,38 @@ impl TokenManager {
         })
     }
 
-    pub async fn broadcast_transfer(&self, to: Address, amount_wei: U256) -> Result<BroadcastedTransaction> {
+    pub async fn broadcast_transfer(
+        &self,
+        to: Address,
+        amount_wei: U256,
+    ) -> Result<BroadcastedTransaction> {
         let tx = self.contract.transfer(to, amount_wei).send().await?;
-        let hash = tx.tx_hash().clone();
 
-        let receipt = tx.get_receipt().await?;
+        Ok(BroadcastedTransaction {
+            hash: *tx.tx_hash(),
+        })
+    }
 
-        let transaction = BroadcastedTransaction {
-            hash,
-            status: receipt.status(),
-            cost: receipt.cost(),
-        };
+    pub async fn wait_for_receipt(
+        &self,
+        hash: TxHash,
+        timeout_duration_secs: u64,
+    ) -> Result<Option<TransactionReceipt>> {
+        let provider = self.contract.provider();
 
-        Ok(transaction)
+        let res = timeout(Duration::from_secs(timeout_duration_secs), async {
+            loop {
+                if let Some(receipt) = provider.get_transaction_receipt(hash).await? {
+                    receipt.ensure_success()?;
+                    return Ok(receipt);
+                }
+                sleep(Duration::from_secs(10)).await;
+            }
+        }).await;
+
+        match res {
+            Ok(r) => r.map(Some),
+            Err(_) => Ok(None),
+        }
     }
 }

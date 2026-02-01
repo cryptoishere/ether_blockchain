@@ -125,8 +125,6 @@ async fn main() -> anyhow::Result<()> {
         .await.unwrap();
 
     println!("Hash: {}", result.hash);
-    println!("Status: {}", result.status);
-    println!("Cost: {}", result.cost);
     */
 
     Ok(())
