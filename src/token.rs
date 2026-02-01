@@ -1,11 +1,13 @@
+use std::convert::TryInto;
 use std::sync::Arc;
+use alloy::eips::BlockId;
 use alloy::network::ReceiptResponse;
 use alloy::rpc::types::TransactionReceipt;
 use alloy::sol;
 use alloy::primitives::{Address, TxHash, U256};
 use alloy::providers::Provider;
 use anyhow::Result;
-use tokio::time::{Duration, sleep, timeout};
+use tokio::time::{Duration, sleep};
 
 use crate::client::AppProvider;
 use crate::utils;
@@ -30,29 +32,38 @@ pub struct TokenManager {
 }
 
 pub struct PreparedTransfer {
-    gas_estimate: u64,
-    gas_price: u128,
+    pub gas_estimate: u64,
+    pub max_fee_per_gas: U256,
+    pub max_priority_fee_per_gas: U256,
 }
 
 impl PreparedTransfer {
-    pub fn calculate_fee(&self, decimals: Option<u8>) -> Result<(u128, String)> {
-        let fee_wei = self.gas_estimate as u128 * self.gas_price;
-        let fee_human = utils::to_human(U256::from(fee_wei), decimals.unwrap_or(18))?;
+    /// Returns (fee_in_wei, human_readable)
+    pub fn calculate_fee(&self, decimals: Option<u8>) -> Result<(U256, String)> {
+        // max_fee_per_gas * gas_units
+        let fee_wei = self.max_fee_per_gas.checked_mul(U256::from(self.gas_estimate)).unwrap();
+
+        let fee_human = utils::to_human(fee_wei, decimals.unwrap_or(18))?;
 
         Ok((fee_wei, fee_human))
     }
 
-    pub fn get_gas_units(&self) -> u128 {
-        self.gas_estimate as u128
+    pub fn get_gas_units(&self) -> u64 {
+        self.gas_estimate
     }
 
-    pub fn get_gas_price(&self) -> u128 {
-        self.gas_price
+    pub fn get_max_fee_per_gas(&self) -> U256 {
+        self.max_fee_per_gas
+    }
+
+    pub fn get_max_priority_fee_per_gas(&self) -> U256 {
+        self.max_priority_fee_per_gas
     }
 }
 
 pub struct BroadcastedTransaction {
     pub hash: TxHash,
+    pub submitted_block: u64,
 }
 
 impl TokenManager {
@@ -95,20 +106,45 @@ impl TokenManager {
         Ok(format!("{} {}", utils::to_human(bal, self.decimals)?, self.symbol))
     }
 
+    /// Helper: compute max_fee and priority_fee (EIP-1559)
+    async fn estimate_eip1559_fees(
+        provider: &Arc<AppProvider>,
+    ) -> Result<(U256, U256)> {
+        let block = provider
+            .get_block(BlockId::latest())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No latest block"))?;
+
+        let base_fee = block
+            .header
+            .base_fee_per_gas
+            .ok_or_else(|| anyhow::anyhow!("Chain does not support EIP-1559"))?;
+
+        let priority_fee = U256::from(2_000_000_000u64); // 2 gwei
+
+        let base_fee_u256 = U256::from(base_fee);
+        let max_fee_per_gas = base_fee_u256.checked_mul(U256::from(2)).unwrap() + priority_fee;
+
+        Ok((max_fee_per_gas, priority_fee))
+    }
+
     /// Cost estimates
-    pub async fn prepare_transfer(&self, to: Address, amount_wei: U256) -> Result<PreparedTransfer> {
-        // Create the call builder
+    pub async fn prepare_transfer(
+        &self,
+        to: Address,
+        amount_wei: U256,
+    ) -> Result<PreparedTransfer> {
         let call = self.contract.transfer(to, amount_wei);
 
-        // 1. Estimate Gas Units
         let gas_estimate = call.estimate_gas().await?;
 
-        // 2. Get Gas Price
-        let gas_price = self.contract.provider().get_gas_price().await?;
+        let (max_fee_per_gas, max_priority_fee_per_gas) =
+            Self::estimate_eip1559_fees(self.contract.provider()).await?;
 
         Ok(PreparedTransfer {
             gas_estimate,
-            gas_price,
+            max_fee_per_gas,
+            max_priority_fee_per_gas,
         })
     }
 
@@ -116,34 +152,57 @@ impl TokenManager {
         &self,
         to: Address,
         amount_wei: U256,
+        prepared: &PreparedTransfer,
     ) -> Result<BroadcastedTransaction> {
-        let tx = self.contract.transfer(to, amount_wei).send().await?;
+        let provider = self.contract.provider();
+
+        let submitted_block = provider.get_block_number().await?;
+
+        let max_fee_u128 = prepared.max_fee_per_gas.try_into()
+            .map_err(|_| anyhow::anyhow!("max_fee_per_gas overflowed u128"))?;
+        let max_priority_u128 = prepared.max_priority_fee_per_gas.try_into()
+            .map_err(|_| anyhow::anyhow!("max_priority_fee_per_gas overflowed u128"))?;
+
+        let tx = self
+            .contract
+            .transfer(to, amount_wei)
+            // .max_fee_per_gas(max_fee.to::<u128>())
+            // .max_priority_fee_per_gas(max_priority.to::<u128>())
+            .max_fee_per_gas(max_fee_u128)
+            .max_priority_fee_per_gas(max_priority_u128)
+            .send()
+            .await?;
 
         Ok(BroadcastedTransaction {
             hash: *tx.tx_hash(),
+            submitted_block,
         })
     }
 
     pub async fn wait_for_receipt(
         &self,
         hash: TxHash,
-        timeout_duration_secs: u64,
+        submitted_block: u64,
+        max_blocks_wait: u64,
     ) -> Result<Option<TransactionReceipt>> {
         let provider = self.contract.provider();
 
-        let res = timeout(Duration::from_secs(timeout_duration_secs), async {
-            loop {
-                if let Some(receipt) = provider.get_transaction_receipt(hash).await? {
-                    receipt.ensure_success()?;
-                    return Ok(receipt);
-                }
-                sleep(Duration::from_secs(10)).await;
+        loop {
+            if let Some(receipt) = provider.get_transaction_receipt(hash).await? {
+                receipt.ensure_success()?;
+                return Ok(Some(receipt));
             }
-        }).await;
 
-        match res {
-            Ok(r) => r.map(Some),
-            Err(_) => Ok(None),
+            let current_block = provider
+                .get_block_number()
+                .await?;
+
+            if current_block.saturating_sub(submitted_block) > max_blocks_wait {
+                // tx is very likely stuck / underpriced
+                return Ok(None);
+            }
+
+            sleep(Duration::from_secs(10)).await;
         }
     }
 }
