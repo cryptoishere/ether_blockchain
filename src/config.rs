@@ -27,10 +27,10 @@ impl Config {
 
         Ok(Self {
             rpc_url: env::var("BSC_API").context("BSC_API not set")?,
-            phrase: Zeroizing::new(env::var("MAIN_PASSPHRASE").context("MAIN_PASSPHRASE not set")?),
-            password: env::var("MAIN_PASSPHRASE_PASSWORD").ok(),
+            phrase: Zeroizing::new(env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE").context("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE not set")?),
+            password: env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE_PASSWORD").ok(),
             usdt_contract: Address::from_str(&env::var("USDT_CONTRACT_BSC").context("USDT_CONTRACT_BSC not set")?)?,
-            recipient: Address::from_str(&env::var("XBTS_BSC_WALLET").context("XBTS_BSC_WALLET not set")?)?,
+            recipient: Address::from_str(&env::var("PLATFORM_BSC_ADDRESS_OF_XBTS").context("XBTS_BSC_WALLET not set")?)?,
         })
     }
 }
