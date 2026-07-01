@@ -38,10 +38,12 @@ pub async fn monitor(
         for log in logs {
             match Transfer::decode_log(&log.into()) {
                 Ok(event) => {
+                    let transfer_from  = event.from;
+
                     let readable = to_human(event.value, decimals).unwrap();
                     log::debug!(
-                        "🚨 INCOMING TRANSACTION! From: {:?} | Amount: {} USDT",
-                        event.from, readable
+                        "🚨 INCOMING TRANSACTION! From: {:?} | Amount: {} USDT | Amount raw: {} USDT",
+                        transfer_from, readable, event.value.to_string()
                     );
                 }
                 Err(e) => log::error!("Error decoding log: {:?}", e),
