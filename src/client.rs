@@ -30,8 +30,10 @@ impl EvmClient {
         let builder = ProviderBuilder::new().wallet(EthereumWallet::from(wallet));
 
         let provider = if let Some(ws_url) = &config.rpc_ws_url {
+            log::debug!("Start WS connection");
             builder.connect_ws(WsConnect::new(ws_url)).await?
         } else {
+            log::debug!("Start HTTP connection");
             builder.connect_http(Url::parse(&config.rpc_url)?)
         };
 

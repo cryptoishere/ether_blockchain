@@ -31,6 +31,7 @@ pub async fn monitor(
     contract_addr: Address,
     destination_wallet: Address,
     decimals: u8,
+    poll_interval: u64,
     mut shutdown: oneshot::Receiver<()>,
     tx: mpsc::Sender<IncomingTransfer>,
 ) -> Result<()> {
@@ -44,7 +45,8 @@ pub async fn monitor(
         .topic2(destination_wallet);
 
     // Create stream
-    let sub = provider.watch_logs(&filter).await?;
+    let mut sub = provider.watch_logs(&filter).await?;
+    sub.set_poll_interval(std::time::Duration::from_secs(poll_interval));
     let mut stream = sub.into_stream();
 
     loop {
@@ -103,6 +105,95 @@ pub async fn monitor(
                                 }
                             }
                         }
+                    }
+
+                    None => {
+                        log::info!("Log stream ended.");
+                        break;
+                    }
+                };
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn monitor_ws(
+    provider: &AppProvider,
+    contract_addr: Address,
+    destination_wallet: Address,
+    decimals: u8,
+    mut shutdown: oneshot::Receiver<()>,
+    tx: mpsc::Sender<IncomingTransfer>,
+) -> Result<()> {
+    log::debug!("--- Starting Monitor for {:?} ---", destination_wallet);
+
+    let sig_hash: FixedBytes<32> = keccak256(Transfer::SIGNATURE);
+
+    let filter = Filter::new()
+        .event_signature(sig_hash)
+        .address(contract_addr)
+        .topic2(destination_wallet);
+
+    // Create stream
+    let sub = provider.subscribe_logs(&filter).await?;
+    let mut stream = sub.into_stream();
+
+    loop {
+        select! {
+            _ = &mut shutdown => {
+                log::info!("Monitor shutting down...");
+                break;
+            }
+
+            maybe_log = stream.next() => {
+                match maybe_log {
+                    Some(log) => {
+                        let tx_hash = log.transaction_hash;
+                        // let block_hash = log.block_hash;
+                        let block_number = log.block_number;
+                        let log_index = log.log_index;
+                        let removed = log.removed;
+
+                        match Transfer::decode_log(&log.into()) {
+                            Ok(event) => {
+                                log::debug!("tx: {:?}", tx_hash);
+                                // log::debug!("block_hash: {:?}", block_hash);
+                                log::debug!("block_number: {:?}", block_number);
+                                log::debug!("log_index: {:?}", log_index);
+                                log::debug!("removed: {:?}", removed);
+
+                                let readable = to_human(event.value, decimals)?;
+                                log::debug!(
+                                    "🚨 Incoming transfer from From: {:?} | Amount: {} USDT | Amount raw: {} USDT",
+                                    event.from,
+                                    readable,
+                                    event.value.to_string()
+                                );
+
+                                match tx.send(IncomingTransfer {
+                                    tx_hash: tx_hash.unwrap(),
+                                    log_index: log_index.unwrap(),
+                                    block_number: block_number.unwrap(),
+                                    from: event.from,
+                                    to: event.to,
+                                    amount: event.value,
+                                }).await {
+                                    Ok(_) => {
+                                        log::debug!("Blockchain transfer data is sent");
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to send transfer data: {e}");
+
+                                        break;
+                                    }
+                                };
+                            }
+                            Err(e) => {
+                                log::error!("Error decoding log: {e}");
+                            }
+                        };
                     }
 
                     None => {
