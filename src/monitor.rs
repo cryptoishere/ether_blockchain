@@ -1,10 +1,13 @@
-use alloy::primitives::{Address, FixedBytes, keccak256};
+use alloy::primitives::{Address, B256, FixedBytes, U256, keccak256};
 use alloy::rpc::types::Filter;
 use alloy::providers::Provider;
 use alloy::sol_types::SolEvent;
 use alloy::sol;
 use futures::StreamExt;
 use anyhow::Result;
+use tokio::sync::oneshot;
+use tokio::sync::mpsc;
+use tokio::select;
 
 use crate::client::AppProvider;
 use crate::utils::to_human;
@@ -14,17 +17,27 @@ sol! {
     event Transfer(address indexed from, address indexed to, uint256 value);
 }
 
+pub struct IncomingTransfer {
+    pub tx_hash: B256,
+    pub log_index: u64,
+    pub block_number: u64,
+    pub from: Address,
+    pub to: Address,
+    pub amount: U256,
+}
+
 pub async fn monitor(
     provider: &AppProvider,
     contract_addr: Address,
     destination_wallet: Address,
-    decimals: u8
+    decimals: u8,
+    mut shutdown: oneshot::Receiver<()>,
+    tx: mpsc::Sender<IncomingTransfer>,
 ) -> Result<()> {
     log::debug!("--- Starting Monitor for {:?} ---", destination_wallet);
 
     let sig_hash: FixedBytes<32> = keccak256(Transfer::SIGNATURE);
 
-    // Filter: Contract = USDT, Topic2 (to) = My Wallet
     let filter = Filter::new()
         .event_signature(sig_hash)
         .address(contract_addr)
@@ -34,24 +47,71 @@ pub async fn monitor(
     let sub = provider.watch_logs(&filter).await?;
     let mut stream = sub.into_stream();
 
-    while let Some(logs) = stream.next().await {
-        for log in logs {
-            match Transfer::decode_log(&log.into()) {
-                Ok(event) => {
-                    let transfer_from  = event.from;
+    loop {
+        select! {
+            _ = &mut shutdown => {
+                log::info!("Monitor shutting down...");
+                break;
+            }
 
-                    let readable = to_human(event.value, decimals).unwrap();
-                    log::debug!(
-                        "🚨 INCOMING TRANSACTION! From: {:?} | Amount: {} USDT | Amount raw: {} USDT",
-                        transfer_from, readable, event.value.to_string()
-                    );
+            maybe_logs = stream.next() => {
+                match maybe_logs {
+                    Some(logs) => {
+                        for log in logs {
+                            let tx_hash = log.transaction_hash;
+                            // let block_hash = log.block_hash;
+                            let block_number = log.block_number;
+                            let log_index = log.log_index;
+                            let removed = log.removed;
+
+                            match Transfer::decode_log(&log.into()) {
+                                Ok(event) => {
+                                    log::debug!("tx: {:?}", tx_hash);
+                                    // log::debug!("block_hash: {:?}", block_hash);
+                                    log::debug!("block_number: {:?}", block_number);
+                                    log::debug!("log_index: {:?}", log_index);
+                                    log::debug!("removed: {:?}", removed);
+
+                                    let readable = to_human(event.value, decimals)?;
+                                    log::debug!(
+                                        "🚨 Incoming transfer from From: {:?} | Amount: {} USDT | Amount raw: {} USDT",
+                                        event.from,
+                                        readable,
+                                        event.value.to_string()
+                                    );
+
+                                    match tx.send(IncomingTransfer {
+                                        tx_hash: tx_hash.unwrap(),
+                                        log_index: log_index.unwrap(),
+                                        block_number: block_number.unwrap(),
+                                        from: event.from,
+                                        to: event.to,
+                                        amount: event.value,
+                                    }).await {
+                                        Ok(_) => {
+                                            log::debug!("Blockchain transfer data is sent");
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to send transfer data: {e}");
+
+                                            break;
+                                        }
+                                    };
+                                }
+                                Err(e) => {
+                                    log::error!("Error decoding log: {e}");
+                                }
+                            }
+                        }
+                    }
+
+                    None => {
+                        log::info!("Log stream ended.");
+                        break;
+                    }
                 }
-                Err(e) => log::error!("Error decoding log: {:?}", e),
             }
         }
-
-        log::debug!("break");
-        break;
     }
 
     Ok(())
