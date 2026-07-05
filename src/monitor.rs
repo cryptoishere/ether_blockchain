@@ -24,6 +24,7 @@ pub struct IncomingTransfer {
     pub from: Address,
     pub to: Address,
     pub amount: U256,
+    pub removed: bool,
 }
 
 pub async fn monitor(
@@ -89,6 +90,7 @@ pub async fn monitor(
                                         from: event.from,
                                         to: event.to,
                                         amount: event.value,
+                                        removed: removed,
                                     }).await {
                                         Ok(_) => {
                                             log::debug!("Blockchain transfer data is sent");
@@ -179,6 +181,7 @@ pub async fn monitor_ws(
                                     from: event.from,
                                     to: event.to,
                                     amount: event.value,
+                                    removed: removed,
                                 }).await {
                                     Ok(_) => {
                                         log::debug!("Blockchain transfer data is sent");
