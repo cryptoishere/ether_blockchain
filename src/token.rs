@@ -2,10 +2,9 @@ use std::convert::TryInto;
 use std::sync::Arc;
 use alloy::eips::BlockId;
 use alloy::network::ReceiptResponse;
-use alloy::rpc::client::NoParams;
 use alloy::rpc::types::TransactionReceipt;
-use alloy::primitives::{Address, BlockNumber, TxHash, U64, U256};
-use alloy::providers::{Provider, ProviderCall};
+use alloy::primitives::{Address, TxHash, U256};
+use alloy::providers::Provider;
 use anyhow::Result;
 
 use crate::client::AppProvider;
@@ -160,7 +159,8 @@ impl TokenManager {
         }
     }
 
-    pub fn get_latest_block(&self) -> ProviderCall<NoParams, U64, BlockNumber> {
-        self.contract.provider().get_block_number()
+    pub async fn get_latest_block(&self) -> Result<u64> {
+        let block = self.contract.provider().get_block_number().await?;
+        Ok(block)
     }
 }
