@@ -3,7 +3,7 @@ use std::sync::Arc;
 use alloy::primitives::Address;
 use alloy::providers::fillers::FillProvider;
 use alloy::providers::fillers::{JoinFill, GasFiller, BlobGasFiller, NonceFiller, ChainIdFiller, WalletFiller};
-use alloy::providers::Identity;
+use alloy::providers::{Identity, WsConnect};
 use anyhow::Result;
 use alloy::providers::{ProviderBuilder, RootProvider};
 use alloy::network::EthereumWallet;
@@ -27,10 +27,13 @@ impl EvmClient {
         let wallet = Wallet::build_signer(&config.phrase, config.password.as_deref(), 0)?;
         let address = wallet.address();
 
-        // Connect provider
-        let provider: AppProvider = ProviderBuilder::new()
-            .wallet(EthereumWallet::from(wallet))
-            .connect_http(Url::parse(&config.rpc_url)?);
+        let builder = ProviderBuilder::new().wallet(EthereumWallet::from(wallet));
+
+        let provider = if let Some(ws_url) = &config.rpc_ws_url {
+            builder.connect_ws(WsConnect::new(ws_url)).await?
+        } else {
+            builder.connect_http(Url::parse(&config.rpc_url)?)
+        };
 
         Ok(Self { provider: Arc::new(provider), address })
     }

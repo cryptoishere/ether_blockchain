@@ -8,7 +8,7 @@ name = "ether_blockchain"
 path = "src/lib.rs"
 
 [dependencies]
-alloy = { version = "2.1.0", default-features = false, features = ["reqwest", "contract", "sol-types", "signer-mnemonic", "network", "rpc-types"] }
+alloy = { version = "2.1.0", default-features = false, features = ["reqwest", "provider-ws", "contract", "sol-types", "signer-mnemonic", "network", "rpc-types"] }
 tokio = { version = "1.52.1", default-features = false, features = ["time"] }
 futures = "0.3.32"
 anyhow = "1.0.102"

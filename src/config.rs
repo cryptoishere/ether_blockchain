@@ -7,6 +7,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub rpc_url: String,
+    pub rpc_ws_url: Option<String>,
     pub phrase: Zeroizing<String>,
     pub password: Option<String>,
     pub usdt_contract: Address,
@@ -15,6 +16,7 @@ pub struct Config {
 
 pub struct ConfigOptions {
     pub rpc_url: String,
+    pub rpc_ws_url: Option<String>,
     pub phrase: String,
     pub password: Option<String>,
     pub usdt_contract: Address,
@@ -27,6 +29,7 @@ impl Config {
 
         Ok(Self {
             rpc_url: env::var("BSC_API").context("BSC_API not set")?,
+            rpc_ws_url: env::var("BSC_WS").context("BSC_WS not set").ok(),
             phrase: Zeroizing::new(env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE").context("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE not set")?),
             password: env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE_PASSWORD").ok(),
             usdt_contract: Address::from_str(&env::var("USDT_CONTRACT_BSC").context("USDT_CONTRACT_BSC not set")?)?,
@@ -39,6 +42,7 @@ impl From<ConfigOptions> for Config {
     fn from(c: ConfigOptions) -> Self {
         Self {
             rpc_url: c.rpc_url,
+            rpc_ws_url: c.rpc_ws_url,
             phrase: Zeroizing::new(c.phrase),
             password: c.password,
             usdt_contract: c.usdt_contract,
