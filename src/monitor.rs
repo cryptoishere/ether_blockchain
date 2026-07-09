@@ -25,6 +25,7 @@ pub struct IncomingTransfer {
     pub to: Address,
     pub amount: U256,
     pub removed: bool,
+    pub block_timestamp: Option<u64>,
 }
 
 pub async fn monitor(
@@ -66,6 +67,7 @@ pub async fn monitor(
                             let block_number = log.block_number;
                             let log_index = log.log_index;
                             let removed = log.removed;
+                            let block_timestamp = log.block_timestamp;
 
                             match Transfer::decode_log(&log.into()) {
                                 Ok(event) => {
@@ -91,6 +93,7 @@ pub async fn monitor(
                                         to: event.to,
                                         amount: event.value,
                                         removed: removed,
+                                        block_timestamp: block_timestamp,
                                     }).await {
                                         Ok(_) => {
                                             log::debug!("Blockchain transfer data is sent");
@@ -157,6 +160,7 @@ pub async fn monitor_ws(
                         let block_number = log.block_number;
                         let log_index = log.log_index;
                         let removed = log.removed;
+                        let block_timestamp = log.block_timestamp;
 
                         match Transfer::decode_log(&log.into()) {
                             Ok(event) => {
@@ -182,6 +186,7 @@ pub async fn monitor_ws(
                                     to: event.to,
                                     amount: event.value,
                                     removed: removed,
+                                    block_timestamp: block_timestamp,
                                 }).await {
                                     Ok(_) => {
                                         log::debug!("Blockchain transfer data is sent");
