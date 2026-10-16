@@ -18,20 +18,23 @@ pub struct TokenManager {
 }
 
 impl TokenManager {
-    pub async fn new(provider: Arc<AppProvider>, contract_address: Address, symbol: &str) -> Result<Self> {
+    pub async fn new(
+        provider: Arc<AppProvider>,
+        contract_address: Address,
+        symbol: &str,
+        known_decimals: Option<u8>,
+    ) -> Result<Self> {
         let contract = IERC20::new(contract_address, provider.clone());
 
-        // Cache decimals for parsing
-        let decimals = match contract.decimals().call().await {
-            Ok(d) => {
-                log::debug!("decimals_call: {d}");
-                d
+        let decimals = match known_decimals {
+            Some(d) => d,
+            None => match contract.decimals().call().await {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("decimals_call error for {symbol}: {e}");
+                    return Err(anyhow::anyhow!("Could not resolve contract decimals"));
+                }
             },
-            Err(e) => {
-                log::error!("decimals_call error: {e}");
-
-                return Err(anyhow::anyhow!("Could not resolve contract decimals"))
-            }
         };
 
         Ok(Self { contract, decimals, symbol: symbol.to_string() })
@@ -75,7 +78,18 @@ impl TokenManager {
         let priority_fee = U256::from(2_000_000_000u64); // 2 gwei
 
         let base_fee_u256 = U256::from(base_fee);
-        let max_fee_per_gas = base_fee_u256.checked_mul(U256::from(2)).unwrap() + priority_fee;
+
+        // base_fee * 2 + priority_fee, saturating on overflow instead of panicking.
+        // Realistically base_fee is ~10^10 wei, so 2x is ~10^10; overflow here
+        // would mean a chain is misreporting base_fee_per_gas as ~10^67 wei.
+        let max_fee_per_gas = base_fee_u256
+            .checked_mul(U256::from(2u8))
+            .and_then(|doubled| doubled.checked_add(priority_fee))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "EIP-1559 fee overflow: base_fee={base_fee_u256}, priority_fee={priority_fee}"
+                )
+            })?;
 
         Ok((max_fee_per_gas, priority_fee))
     }

@@ -29,10 +29,9 @@ Supports balance queries, gas estimation, and broadcasting transactions through 
 
     If your shell supports \ line continuation:
     ```bash
-        MAIN_WALLET="your_main_wallet_here" \
-        MAIN_PASSPHRASE="your_passphrase_here" \
-        MAIN_PASSPHRASE_PASSWORD="optional_password_here" \
-        BSC_API="https://ancient-attentive-surf.bsc.quiknode.pro/<API_KEY>" \
+        PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE="your_passphrase_here" \
+        PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE_PASSWORD="optional_password_here" \
+        PLATFORM_BSC_API="https://ancient-attentive-surf.bsc.quiknode.pro/<API_KEY>" \
         USDT_CONTRACT_BSC="0x55d398326f99059fF775485246999027B3197955" \
         ETH_CONTRACT_BSC="0x2170Ed0880ac9A755fd29B2688956BD959F933F8" \
         XBTS_BSC_WALLET="0x413e8c21dd266ea5f4e7eebcd18498a66ec8dac7" \
@@ -44,11 +43,10 @@ Supports balance queries, gas estimation, and broadcasting transactions through 
     If you want to keep the terminal session “loaded” with these values:
 
     ```bash
-        export MAIN_WALLET="your_main_wallet_here"
-        export MAIN_PASSPHRASE="your_passphrase_here"
-        export MAIN_PASSPHRASE_PASSWORD="optional_password_here"
+        export PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE="your_passphrase_here"
+        export PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE_PASSWORD="optional_password_here"
 
-        export BSC_API="https://ancient-attentive-surf.bsc.quiknode.pro/<API_KEY>"
+        export PLATFORM_BSC_API="https://ancient-attentive-surf.bsc.quiknode.pro/<API_KEY>"
         export USDT_CONTRACT_BSC="0x55d398326f99059fF775485246999027B3197955"
         export ETH_CONTRACT_BSC="0x2170Ed0880ac9A755fd29B2688956BD959F933F8"
 
@@ -67,7 +65,7 @@ Supports balance queries, gas estimation, and broadcasting transactions through 
 
     Then start your command with a space:
 
-    ` export MAIN_WALLET="..."`
+    ` export PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE="..."`
 
 
     Shell history won’t record it.
@@ -75,7 +73,7 @@ Supports balance queries, gas estimation, and broadcasting transactions through 
 ### Usage `Cargo.toml`
 
 ```
-tokio = "1.48.0"
+tokio = "1.53"
 ether_alloy = { git = "https://github.com/cryptoishere/ether_blockchain.git" }
 ```
 
@@ -99,8 +97,9 @@ async fn main() -> anyhow::Result<()> {
     // 3. Initialize Token Manager (USDT)
     let usdt_manager = TokenManager::new(
         client.provider.clone(), 
-        config.usdt_contract, 
-        "USDT"
+        config.contract, 
+        "USDT",
+        None
     ).await.unwrap();
 
     // 4. Check Balance
@@ -112,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Estimate transfer cost
     let estimations = usdt_manager.prepare_transfer(
-        config.recipient, 
+        config.recipient,
         amount_to_send
     ).await.unwrap();
 
@@ -121,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
     // Uncomment to broadcast:
     /*
     let result = usdt_manager
-        .broadcast_transfer(config.recipient, amount_to_send)
+        .broadcast_transfer(config.recipient, amount_to_send, &estimations)
         .await.unwrap();
 
     println!("Hash: {}", result.hash);

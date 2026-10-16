@@ -27,7 +27,16 @@ impl PreparedTransfer {
     /// Returns (fee_in_wei, human_readable)
     pub fn calculate_fee(&self, decimals: Option<u8>) -> Result<(U256, String)> {
         // max_fee_per_gas * gas_units
-        let fee_wei = self.max_fee_per_gas.checked_mul(U256::from(self.gas_estimate)).unwrap();
+        let fee_wei = self
+            .max_fee_per_gas
+            .checked_mul(U256::from(self.gas_estimate))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Fee overflow: max_fee_per_gas={} * gas_estimate={}",
+                    self.max_fee_per_gas,
+                    self.gas_estimate,
+                )
+            })?;
 
         let fee_human = utils::to_human(fee_wei, decimals.unwrap_or(18))?;
 

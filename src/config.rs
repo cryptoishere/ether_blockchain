@@ -5,48 +5,73 @@ use std::env;
 use std::str::FromStr;
 
 #[derive(Debug, Clone)]
-pub struct Config {
-    pub rpc_url: String,
-    pub rpc_ws_url: Option<String>,
-    pub phrase: Zeroizing<String>,
-    pub password: Option<String>,
-    pub usdt_contract: Address,
-    pub recipient: Address,
+pub enum UrlWithProtocolType {
+    HTTP(String),
+    WS(String),
 }
 
-pub struct ConfigOptions {
-    pub rpc_url: String,
-    pub rpc_ws_url: Option<String>,
-    pub phrase: String,
-    pub password: Option<String>,
-    pub usdt_contract: Address,
+/// One ERC-20 (or BEP-20) token the bot cares about.
+#[derive(Debug, Clone)]
+pub struct TokenConfig {
+    pub symbol: String, // "USDT", "USDC", ...
+    pub contract: Address,
+    pub decimals: Option<u8>, // None = query on-chain
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub rpc_url: UrlWithProtocolType,
+    pub phrase: Zeroizing<String>,
+    pub password: Option<Zeroizing<String>>,
+    pub tokens: Vec<TokenConfig>,
     pub recipient: Address,
 }
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        // dotenvy::dotenv().ok();
+        let rpc_url = if let Ok(key) = env::var("PLATFORM_BSC_API") {
+            UrlWithProtocolType::HTTP(key)
+        } else if let Ok(key) = env::var("PLATFORM_BSC_WS") {
+            UrlWithProtocolType::WS(key)
+        } else {
+            anyhow::bail!("Cannot build config");
+        };
+
+        // Build tokens from env. Add more entries as needed.
+        let mut tokens = Vec::new();
+
+        if let Ok(addr) = env::var("USDT_CONTRACT_BSC") {
+            tokens.push(TokenConfig {
+                symbol: "USDT".into(),
+                contract: Address::from_str(&addr).context("bad USDT_CONTRACT_BSC")?,
+                decimals: None,
+            });
+        }
+        if let Ok(addr) = env::var("USDC_CONTRACT_BSC") {
+            tokens.push(TokenConfig {
+                symbol: "USDC".into(),
+                contract: Address::from_str(&addr).context("bad USDC_CONTRACT_BSC")?,
+                decimals: None,
+            });
+        }
+
+        if tokens.is_empty() {
+            anyhow::bail!("No token contracts configured (USDT_CONTRACT_BSC / USDC_CONTRACT_BSC)");
+        }
 
         Ok(Self {
-            rpc_url: env::var("BSC_API").context("BSC_API not set")?,
-            rpc_ws_url: env::var("BSC_WS").context("BSC_WS not set").ok(),
-            phrase: Zeroizing::new(env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE").context("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE not set")?),
-            password: env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE_PASSWORD").ok(),
-            usdt_contract: Address::from_str(&env::var("USDT_CONTRACT_BSC").context("USDT_CONTRACT_BSC not set")?)?,
-            recipient: Address::from_str(&env::var("PLATFORM_BSC_ADDRESS_OF_XBTS").context("XBTS_BSC_WALLET not set")?)?,
+            rpc_url,
+            phrase: Zeroizing::new(
+                env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE")
+                    .context("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE not set")?,
+            ),
+            password: env::var("PLATFORM_BANK_GENESIS_ADDRESS_PASSPHRASE_PASSWORD")
+                .ok()
+                .map(Zeroizing::new),
+            tokens,
+            recipient: Address::from_str(
+                &env::var("PLATFORM_BSC_ADDRESS_OF_XBTS").context("XBTS_BSC_WALLET not set")?,
+            )?,
         })
-    }
-}
-
-impl From<ConfigOptions> for Config {
-    fn from(c: ConfigOptions) -> Self {
-        Self {
-            rpc_url: c.rpc_url,
-            rpc_ws_url: c.rpc_ws_url,
-            phrase: Zeroizing::new(c.phrase),
-            password: c.password,
-            usdt_contract: c.usdt_contract,
-            recipient: c.recipient,
-        }
     }
 }

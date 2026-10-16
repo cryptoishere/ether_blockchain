@@ -18,6 +18,7 @@ sol! {
 }
 
 pub struct IncomingTransfer {
+    pub symbol: String,
     pub tx_hash: B256,
     pub log_index: u64,
     pub block_number: u64,
@@ -33,6 +34,7 @@ pub async fn monitor(
     contract_addr: Address,
     destination_wallet: Address,
     decimals: u8,
+    symbol: &str,
     poll_interval: u64,
     mut shutdown: oneshot::Receiver<()>,
     tx: mpsc::Sender<IncomingTransfer>,
@@ -86,6 +88,7 @@ pub async fn monitor(
                                     );
 
                                     match tx.send(IncomingTransfer {
+                                        symbol: symbol.to_string(),
                                         tx_hash: tx_hash.unwrap(),
                                         log_index: log_index.unwrap(),
                                         block_number: block_number.unwrap(),
@@ -129,6 +132,7 @@ pub async fn monitor_ws(
     contract_addr: Address,
     destination_wallet: Address,
     decimals: u8,
+    symbol: &str,
     mut shutdown: oneshot::Receiver<()>,
     tx: mpsc::Sender<IncomingTransfer>,
 ) -> Result<()> {
@@ -179,6 +183,7 @@ pub async fn monitor_ws(
                                 );
 
                                 match tx.send(IncomingTransfer {
+                                    symbol: symbol.to_string(),
                                     tx_hash: tx_hash.unwrap(),
                                     log_index: log_index.unwrap(),
                                     block_number: block_number.unwrap(),
