@@ -1,6 +1,6 @@
 use std::io;
 
-use alloy::signers::local::coins_bip39::{English, Entropy, Mnemonic};
+use alloy::signers::local::coins_bip39::{English, Entropy, Mnemonic, WordCount};
 use alloy::signers::local::{LocalSignerError, MnemonicBuilder, PrivateKeySigner};
 use zeroize::Zeroizing;
 
@@ -28,12 +28,13 @@ impl Wallet {
     }
 
     fn generate_mnemonic(entropy_size: usize) -> Result<Zeroizing<String>, LocalSignerError> {
+        let mut rng = rand::rng();
         let entropy = match entropy_size {
-            12 => Entropy::Sixteen(rand::random()),
-            15 => Entropy::Twenty(rand::random()),
-            18 => Entropy::TwentyFour(rand::random()),
-            21 => Entropy::TwentyEight(rand::random()),
-            24 => Entropy::ThirtyTwo(rand::random()),
+            12 => Entropy::random(WordCount::Twelve, &mut rng),
+            15 => Entropy::random(WordCount::Fifteen, &mut rng),
+            18 => Entropy::random(WordCount::Eighteen, &mut rng),
+            21 => Entropy::random(WordCount::TwentyOne, &mut rng),
+            24 => Entropy::random(WordCount::TwentyFour, &mut rng),
             other => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -45,7 +46,7 @@ impl Wallet {
             }
         };
 
-        Ok(Zeroizing::new(Mnemonic::<English>::new_from_entropy(entropy).to_phrase()))
+        Ok(Mnemonic::<English>::new_from_entropy(entropy).to_phrase())
     }
 
     /// Build signer from mnemonic
